@@ -1,4 +1,4 @@
-file_path = r'C:\Users\rudolph\Downloads\datat.txt' 
+file_path = r'C:..\datat.txt' 
 # Open the text file you saved from CoolTerm
 with open(file_path, 'r') as f:
     # Read the text and remove spaces/newlines so it's one long string
@@ -8,7 +8,7 @@ with open(file_path, 'r') as f:
 image_bytes = bytes.fromhex(hex_string)
 
 # Save those bytes as a JPG file
-with open(r'C:\Users\rudolph\Downloads\satellite_photo.jpg', 'wb') as f:
+with open(r'C:..\satellite_photo.jpg', 'wb') as f:
     f.write(image_bytes)
 
 print("Success! Your image is saved as satellite_photo.jpg")
