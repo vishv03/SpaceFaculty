@@ -37,7 +37,7 @@ void loop() {
   Serial.print(" R: "); Serial.print(right);
   Serial.print(" B: "); Serial.println(back);
 
-  controlMotor(left, right, back);
+  //controlMotor(left, right, back);
 
   delay(5000);  // required sample time
 }
@@ -87,22 +87,22 @@ void shake() {
         //clockwise
         analogWrite(motorPin1, 255);
         analogWrite(motorPin2, 0);
-        delay(500);
+        delay(1000);
 
         //stop motor
         analogWrite(motorPin1, 0);
         analogWrite(motorPin2, 0);
-        delay(100);
+        delay(500);
 
         //counter clockwise
         analogWrite(motorPin1, 0);
         analogWrite(motorPin2, 255);
-        delay(500);
+        delay(1000);
 
         //stop motor
         analogWrite(motorPin1, 0);
         analogWrite(motorPin2, 0);
-        delay(100);
+        delay(500);
 
         Serial.println("Sequence complete, awaitn for next shake");
       }
