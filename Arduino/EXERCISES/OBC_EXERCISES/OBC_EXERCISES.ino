@@ -9,6 +9,8 @@
 #define RX_PIN 3
 #define TX_PIN 4
 
+SoftwareSerial adcs(RX_PIN,  TX_PIN);
+
 #define GROUP_NAME "TEAM4"
 
 // ── Shared Cached Sensor Readings ────────────
@@ -31,7 +33,7 @@ bool vbatWarningSet = false;
 // ─────────────────────────────────────────────
 void setup() {
   Serial.begin(9600);
-  link.begin(9600);
+  adcs.begin(9600);
   while (!Serial);
 
   Serial.println("=== OBC Booting ===");
@@ -201,12 +203,25 @@ void sendTempEPS() {
 void retrieveTempADCS() {
   
   // Read from ADCS PIN
-  // Serial.read(ADCS_TEMP_PIN)
+  Serial.println("Request sent to ADCS...");
 
-  link.println("TEMPADCS");
-  Serial.println("Request sent to ADCS...")
+  adcs.println("TEMPADCS");
 
-  if (link.available())
+  unsigned long start = millis();
+  String response = "";
+
+  while (millis() - start < 2000) {
+    if (adcs.available()) {
+      response = adcs.readStringUntil("\n");
+      break;
+    }
+  }
+
+  if (response.length() > 0) {
+    sendLoRa("[" + String(GROUP_NAME) + "]" + response);
+  } else {
+    sendLoRa("[" + String(GROUP_NAME) + "] ERROR: No response from ADCS");
+  }
 }
 
 // ─────────────────────────────────────────────
