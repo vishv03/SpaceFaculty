@@ -1,10 +1,13 @@
 #include <SPI.h>
 #include <LoRa.h>
+#include <SoftwareSerial.h>
 
 // ── Pin Definitions ──────────────────────────
 #define LM35_OBC A1
 #define LM35_EPS A2
 #define VBAT_PIN A0
+#define RX_PIN 3
+#define TX_PIN 4
 
 #define GROUP_NAME "TEAM4"
 
@@ -28,6 +31,7 @@ bool vbatWarningSet = false;
 // ─────────────────────────────────────────────
 void setup() {
   Serial.begin(9600);
+  link.begin(9600);
   while (!Serial);
 
   Serial.println("=== OBC Booting ===");
@@ -91,7 +95,9 @@ void onReceive(int packetSize) {
     sendAck("TIME RESET OK");
   } else if (command == "STATUS") {
     sendStatus();
-  } else {
+  } else if (command == "TEMPADCS") {
+    retrieveTempADCS();
+  }else {
     sendAck("UNKNOWN CMD: " + command);
   }
 
@@ -190,6 +196,17 @@ void sendTempOBC() {
 // ─────────────────────────────────────────────
 void sendTempEPS() {
   sendLoRa("[" + String(GROUP_NAME) + "] TEMPEPS = " + String(g_tempEPS, 1) + " deg");
+}
+
+void retrieveTempADCS() {
+  
+  // Read from ADCS PIN
+  // Serial.read(ADCS_TEMP_PIN)
+
+  link.println("TEMPADCS");
+  Serial.println("Request sent to ADCS...")
+
+  if (link.available())
 }
 
 // ─────────────────────────────────────────────
