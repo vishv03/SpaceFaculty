@@ -1,7 +1,6 @@
-#define LEFT_SENSOR  A0
-#define RIGHT_SENSOR A1
-#define BACK_SENSOR  A3
-
+#define RIGHT_SENSOR A0
+#define BACK_SENSOR  A2 
+#define LEFT_SENSOR  A3 
 int motorPin = 9;
 
 void setup() {
