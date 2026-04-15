@@ -54,7 +54,7 @@ void loop() {
     if      (received == "SUN")   sunAndMotor();
     else if (received == "ADJ")   { int l=analogRead(LEFT_SENSOR), r=analogRead(RIGHT_SENSOR), b=analogRead(BACK_SENSOR); controlMotor(l,r,b); }
     else if (received == "IMU")   sendIMUData();
-    else if (received == "TEMP")  sendTempData();
+    else if (received == "TEMPADCS")  sendTempData();
     else if (received == "SHAKE") shake();
     else {
       obcSerial.println("ERROR UNKNOWN COMMAND: " + received);
@@ -188,6 +188,24 @@ void sendIMUData() {
                  " | RotZ: " + String(euler.z(), 2);
   obcSerial.println(reply);
   Serial.println("[ADCS→OBC] " + reply);
+}
+
+// Called by "SUN" — report raw values only
+void sendSunValues() {
+  int left  = analogRead(LEFT_SENSOR);
+  int right = analogRead(RIGHT_SENSOR);
+  int back  = analogRead(BACK_SENSOR);
+  String reply = "S1: " + String(left) + "\nS2: " + String(right) + "\nS3: " + String(back);
+  obcSerial.println(reply);
+  Serial.println("[ADCS→OBC] " + reply);
+}
+
+// Called by "ADJ" — compare and rotate
+void adjMotor() {
+  int left  = analogRead(LEFT_SENSOR);
+  int right = analogRead(RIGHT_SENSOR);
+  int back  = analogRead(BACK_SENSOR);
+  controlMotor(left, right, back);  // your existing function
 }
 
 // ─────────────────────────────────────────────
