@@ -1,10 +1,15 @@
 #include <SPI.h>
 #include <LoRa.h>
+#include <SoftwareSerial.h>
 
 // ── Pin Definitions ──────────────────────────
 #define LM35_OBC A1
 #define LM35_EPS A2
 #define VBAT_PIN A0
+#define RX_PIN 3
+#define TX_PIN 4
+
+SoftwareSerial adcs(RX_PIN,  TX_PIN);
 
 #define GROUP_NAME "TEAM4"
 
@@ -28,6 +33,7 @@ bool vbatWarningSet = false;
 // ─────────────────────────────────────────────
 void setup() {
   Serial.begin(9600);
+  adcs.begin(9600);
   while (!Serial);
 
   Serial.println("=== OBC Booting ===");
@@ -91,7 +97,9 @@ void onReceive(int packetSize) {
     sendAck("TIME RESET OK");
   } else if (command == "STATUS") {
     sendStatus();
-  } else {
+  } else if (command == "TEMPADCS") {
+    retrieveTempADCS();
+  }else {
     sendAck("UNKNOWN CMD: " + command);
   }
 
@@ -190,6 +198,30 @@ void sendTempOBC() {
 // ─────────────────────────────────────────────
 void sendTempEPS() {
   sendLoRa("[" + String(GROUP_NAME) + "] TEMPEPS = " + String(g_tempEPS, 1) + " deg");
+}
+
+void retrieveTempADCS() {
+  
+  // Read from ADCS PIN
+  Serial.println("Request sent to ADCS...");
+
+  adcs.println("TEMPADCS");
+
+  unsigned long start = millis();
+  String response = "";
+
+  while (millis() - start < 2000) {
+    if (adcs.available()) {
+      response = adcs.readStringUntil("\n");
+      break;
+    }
+  }
+
+  if (response.length() > 0) {
+    sendLoRa("[" + String(GROUP_NAME) + "]" + response);
+  } else {
+    sendLoRa("[" + String(GROUP_NAME) + "] ERROR: No response from ADCS");
+  }
 }
 
 // ─────────────────────────────────────────────
