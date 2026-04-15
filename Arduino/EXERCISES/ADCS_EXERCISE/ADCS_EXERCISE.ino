@@ -15,8 +15,12 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55);
 #define TX_PIN       2      // ADCS TX → OBC RX (pin 3)
 #define RX_PIN       3      // ADCS RX ← OBC TX (pin 4)
 
+#define SAMPLE_TIME_MS 5000   // 5-second sample interval
+
 const float shakeThreshold = 5.0;
 bool isShaken = false;
+
+unsigned long lastSunTime = 0;   // enforces 5-second sample time for SUN
 
 SoftwareSerial obcSerial(RX_PIN, TX_PIN,true);
 
@@ -38,6 +42,8 @@ void setup() {
 
 // ─────────────────────────────────────────────
 void loop() {
+  obcSerial.listen();
+
   if (obcSerial.available()) {
     String received = obcSerial.readStringUntil('\n');
     received.trim();
@@ -45,42 +51,94 @@ void loop() {
     Serial.print("[OBC CMD] ");
     Serial.println(received);
 
-    // Read LDR sensors once; share across handlers that need them
-    int left  = analogRead(LEFT_SENSOR);
-    int right = analogRead(RIGHT_SENSOR);
-    int back  = analogRead(BACK_SENSOR);
-
-    // ── Dispatch ─────────────────────────────
-    if      (received == "SUN")   sendSunData(left, right, back);
-    else if (received == "ADJ")   controlMotor(left, right, back);
+    if      (received == "SUN")   sunAndMotor();
+    else if (received == "ADJ")   { int l=analogRead(LEFT_SENSOR), r=analogRead(RIGHT_SENSOR), b=analogRead(BACK_SENSOR); controlMotor(l,r,b); }
     else if (received == "IMU")   sendIMUData();
-    else if (received == "TEMP")  sendTempData();      // ← OBC calls this for TEMPADCS
+    else if (received == "TEMP")  sendTempData();
     else if (received == "SHAKE") shake();
     else {
-      // Only reaches here when no command matched
       obcSerial.println("ERROR UNKNOWN COMMAND: " + received);
       Serial.println("Unknown command received.");
     }
   }
-  // No blanket delay here — let the serial buffer drain naturally
 }
 
 // ─────────────────────────────────────────────
-// TEMPERATURE — reply label matches OBC command
+// SUN SENSOR + MOTOR CONTROL  (triggered by "SUN")
+// ─────────────────────────────────────────────
+void sunAndMotor() {
+
+  // Enforce 5-second sample time — reject if called too soon
+  if (millis() - lastSunTime < SAMPLE_TIME_MS) {
+    unsigned long remaining = (SAMPLE_TIME_MS - (millis() - lastSunTime)) / 1000;
+    String busy = "SUN: sample not ready, wait " + String(remaining) + "s";
+    obcSerial.println(busy);
+    Serial.println("[ADCS] " + busy);
+    return;
+  }
+  lastSunTime = millis();
+
+  // Read all three sensors
+  int left  = analogRead(LEFT_SENSOR);
+  int right = analogRead(RIGHT_SENSOR);
+  int back  = analogRead(BACK_SENSOR);
+
+  Serial.print("[ADCS] L="); Serial.print(left);
+  Serial.print(" R=");        Serial.print(right);
+  Serial.print(" B=");        Serial.println(back);
+
+  String status = "";
+
+  if (left > right && left > back) {
+    // ── Left is brightest → rotate CCW for 1 second ──
+    status = "Motor: rotating CCW (left brightest, L=" + String(left) + ")";
+    Serial.println("[ADCS] " + status);
+    obcSerial.println(status);
+
+    analogWrite(motorPin1, 255);  // CCW: pin1 full, pin2 off
+    analogWrite(motorPin2, 0);
+    delay(1000);
+    analogWrite(motorPin1, 0);    // stop after 1 s
+    analogWrite(motorPin2, 0);
+
+  } else if (right > left && right > back) {
+    // ── Right is brightest → rotate CW for 1 second ──
+    status = "Motor: rotating CW (right brightest, R=" + String(right) + ")";
+    Serial.println("[ADCS] " + status);
+    obcSerial.println(status);
+
+    analogWrite(motorPin1, 0);    // CW: pin2 full, pin1 off
+    analogWrite(motorPin2, 255);
+    delay(1000);
+    analogWrite(motorPin1, 0);    // stop after 1 s
+    analogWrite(motorPin2, 0);
+
+  } else {
+    // ── Back is brightest (or tie) → stop motor ──
+    status = "Motor: stopped (back brightest, B=" + String(back) + ")";
+    Serial.println("[ADCS] " + status);
+    obcSerial.println(status);
+
+    analogWrite(motorPin1, 0);
+    analogWrite(motorPin2, 0);
+  }
+}
+
+// ─────────────────────────────────────────────
+// TEMPERATURE
 // ─────────────────────────────────────────────
 void sendTempData() {
-  int   tempRaw   = analogRead(TEMP_SENSOR);
-  float tempVolt  = tempRaw * (5.0 / 1023.0);
-  float tempC     = tempVolt * 100.0;           // LM35: 10 mV/°C
+  int   tempRaw  = analogRead(TEMP_SENSOR);
+  float tempVolt = tempRaw * (5.0 / 1023.0);
+  float tempC    = tempVolt * 100.0;
 
-  // Label clearly so OBC / LoRa output reads "TEMPADCS = XX.X deg"
   String reply = "TEMPADCS = " + String(tempC, 1) + " deg";
   obcSerial.println(reply);
-  Serial.println("[ADCS OBC] " + reply);
+  Serial.println("[ADCS→OBC] " + reply);
 }
 
 // ─────────────────────────────────────────────
-// SUN SENSOR DATA
+// SUN SENSOR DATA ONLY (raw values, no motor)
 // ─────────────────────────────────────────────
 void sendSunData(int left, int right, int back) {
   String reply = "L: " + String(left) +
@@ -91,23 +149,30 @@ void sendSunData(int left, int right, int back) {
 }
 
 // ─────────────────────────────────────────────
-// MOTOR CONTROL
+// MOTOR CONTROL (standalone, called by ADJ)
 // ─────────────────────────────────────────────
 void controlMotor(int left, int right, int back) {
   if (left > right && left > back) {
-    obcSerial.println("Motor: CCW (left brightest)");
+    obcSerial.println("Motor: rotating CCW (left brightest)");
+    Serial.println("[ADCS] Motor: rotating CCW");
     analogWrite(motorPin1, 255);
+    analogWrite(motorPin2, 0);
     delay(1000);
     analogWrite(motorPin1, 0);
+    analogWrite(motorPin2, 0);
   }
   else if (right > left && right > back) {
-    obcSerial.println("Motor: CW (right brightest)");
+    obcSerial.println("Motor: rotating CW (right brightest)");
+    Serial.println("[ADCS] Motor: rotating CW");
+    analogWrite(motorPin1, 0);
     analogWrite(motorPin2, 255);
     delay(1000);
+    analogWrite(motorPin1, 0);
     analogWrite(motorPin2, 0);
   }
   else {
-    obcSerial.println("Motor: STOP (back brightest)");
+    obcSerial.println("Motor: stopped (back brightest)");
+    Serial.println("[ADCS] Motor: stopped");
     analogWrite(motorPin1, 0);
     analogWrite(motorPin2, 0);
   }
@@ -126,7 +191,7 @@ void sendIMUData() {
 }
 
 // ─────────────────────────────────────────────
-// SHAKE DETECTION + RESPONSE SEQUENCE
+// SHAKE DETECTION + MOTOR SEQUENCE
 // ─────────────────────────────────────────────
 void shake() {
   imu::Vector<3> accel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
@@ -150,7 +215,7 @@ void shake() {
 
     obcSerial.println("SHAKE: Sequence complete, awaiting next shake");
     Serial.println("[ADCS] Sequence complete.");
-    isShaken = false;   // ready to detect again
+    isShaken = false;
   } else if (!shakeDetected) {
     obcSerial.println("SHAKE: No shake detected");
   }

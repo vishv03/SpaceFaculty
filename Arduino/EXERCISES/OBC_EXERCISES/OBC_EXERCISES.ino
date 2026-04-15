@@ -124,6 +124,7 @@ void handleCommand(String command) {
   else if (command == "RTIMEOBC")       { resetTime(); sendAck("TIME RESET OK"); }
   else if (command == "STATUS")         sendStatus();
   else if (command == "TEMPADCS")       retrieveTempADCS();   // ← your target command
+  else if (command == "SUN")    retrieveSunADCS();
   else                                  sendAck("UNKNOWN CMD: " + command);
 }
 
@@ -256,6 +257,40 @@ void retrieveTempADCS() {
 // ─────────────────────────────────────────────
 void sendVBAT() {
   sendLoRa("[" + String(GROUP_NAME) + "] VBAT = " + String(g_vbat, 2) + " V");
+}
+
+
+// ─────────────────────────────────────────────
+// RETRIEVE SUN + MOTOR STATUS FROM ADCS
+// ─────────────────────────────────────────────
+void retrieveSunADCS() {
+  Serial.println("[ADCS] Sending SUN command to ADCS...");
+
+  // Flush stale bytes before sending
+  while (adcs.available()) adcs.read();
+
+  adcs.println("SUN");
+  delay(50);
+
+  unsigned long start = millis();
+  String response = "";
+
+  while (millis() - start < 8000) {   // 8s timeout — covers 5s sample + motor time
+    if (adcs.available()) {
+      response = adcs.readStringUntil('\n');
+      response.trim();
+      if (response.length() > 0) break;
+    }
+  }
+
+  if (response.length() > 0) {
+    Serial.print("[ADCS] Motor status: ");
+    Serial.println(response);
+    sendLoRa("[" + String(GROUP_NAME) + "] SUN/MOTOR: " + response);
+  } else {
+    Serial.println("[ADCS] No response from ADCS.");
+    sendLoRa("[" + String(GROUP_NAME) + "] ERROR: No response from ADCS");
+  }
 }
 
 void sendAll() {
