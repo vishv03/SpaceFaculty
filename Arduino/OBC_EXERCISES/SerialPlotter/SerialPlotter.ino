@@ -101,11 +101,11 @@ void loop() {
     float sdVBAT = calcStdDev(vbatBuffer, bufCount);
 
     // Output one line — Serial Plotter draws one point per println
-    Serial.print("TEMPOBC:");    Serial.print(tempOBC, 2); Serial.print(",");
-    Serial.print("TEMPEPS:");    Serial.print(tempEPS, 2); Serial.print(",");
-    Serial.print("VBAT:");       Serial.print(vbat, 3);    Serial.print(",");
-    Serial.print("StdDev_OBC:"); Serial.print(sdOBC, 3);   Serial.print(",");
-    Serial.print("StdDev_EPS:"); Serial.print(sdEPS, 3);   Serial.print(",");
-    Serial.print("StdDev_VBAT:"); Serial.println(sdVBAT, 4);
+    Serial.print("TEMPOBC:" + String(tempOBC, 2) + ",");
+    Serial.print("TEMPEPS:" + String(tempEPS, 2) + ",");
+    Serial.print("VBAT:" + String(vbat, 3) + ",");
+    Serial.print("StdDev_OBC:" + String(sdOBC, 3) + ",");
+    Serial.print("StdDev_EPS:" + String(sdEPS, 3) + ",");
+    Serial.print("StdDev_VBAT:" + String(sdVBAT, 4));
   }
 }
