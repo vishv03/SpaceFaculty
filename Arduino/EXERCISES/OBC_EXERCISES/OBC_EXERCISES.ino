@@ -51,6 +51,10 @@ void checkTemperatureWarning();
 void checkVoltageWarning();
 float averageRead(int pin, int samples);
 float averageReadVolts(int pin, int samples);
+void retrieveIMUADCS();
+void retrieveSunADCS();
+void retrieveAdjADCS();
+void triggerCAM();
 
 // ─────────────────────────────────────────────
 // SETUP
@@ -121,23 +125,25 @@ void onReceive(int packetSize) {
   }
   packet.trim();
 
-  Serial.print("[RAW RX]: ");
-  Serial.println(packet);
+  String header = String(GROUP_NAME) + "|" + SECRET_KEY + "|";
 
-  if (!packet.startsWith(String(SECRET_KEY) + "|")) {
+  if (!packet.startsWith(header)) {
     Serial.println("[SECURITY] INVALID KEY - packet ignore");
     return;
   }
 
-  String command = packet.substring(strlen(SECRET_KEY) + 1);
-  command.trim();
+  String payload = packet.substring(header.length());
 
-  Serial.print("[GS CMD] Received: ");
-  Serial.println(command);
-
-  // Don't handle here — defer to loop()
-  pendingCommand = command;
-  commandPending = true;
+  int sep = payload.indexOf('|');
+  String type = payload.substring(0,sep);
+  String data = payload.substring(sep + 1);
+  
+  if(type == "CMD") {
+    Serial.print("[GS CMD] Received: ");
+    Serial.println(data);
+    pendingCommand = data;
+    commandPending = true;
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -154,7 +160,6 @@ void handleCommand(String command) {
   else if (command == "STATUS")         sendStatus();
   else if (command == "TEMPADCS")       retrieveTempADCS();   // ← your target command
   else if (command == "SUN")    retrieveSunADCS();
-  else if (command == "ENADCS")  { digitalWrite(ADCS_EN_PIN, HIGH); sendAck("ADCS Enabled"); }
 else if (command == "CAM")     triggerCAM();
 else if (command == "IMU")     retrieveIMUADCS();
 else if (command == "ADJ")     retrieveAdjADCS();
@@ -210,7 +215,7 @@ void updateSensors() {
 // LORA SEND HELPERS
 // ─────────────────────────────────────────────
 void sendLoRa(String msg) {
-  String packet = String(SECRET_KEY) + "|" + msg;
+  String packet = String(GROUP_NAME) + "|" + SECRET_KEY + "|DATA|" + msg;
   LoRa.beginPacket();
   LoRa.print(packet);
   LoRa.endPacket();

@@ -16,6 +16,7 @@
 // STATUS        - Request system status
 
 #define SECRET_KEY "ANGRYPHONES"
+#define GROUP_NAME "TEAM4"
 String command = "";
 
 void setup() {
@@ -56,7 +57,7 @@ void loop() {
 // SEND COMMAND TO OBC
 // ─────────────────────────────────────────────
 void sendCommand(String cmd) {
-  String packet = String(SECRET_KEY) + "|" + cmd;
+  String packet = String(GROUP_NAME) + "|" + SECRET_KEY + "|CMD|" + cmd;
 
 
 
@@ -85,19 +86,18 @@ void onReceive(int packetSize) {
   }
   packet.trim();
 
-  Serial.print("[RAW RX] ");
-  Serial.println(packet);
-
-  String prefix = String(SECRET_KEY) + "|";
-  if(!packet.startsWith(prefix)) {
+  String header = String(GROUP_NAME) + "|" + SECRET_KEY + "|";
+  if(!packet.startsWith(header)) {
     Serial.println("[SECURITY] INVALID IGNORE");
     return;
   }
 
-  String incoming = packet.substring(prefix.length());
-
-  Serial.print("[OBC] ");
-  Serial.print(incoming);
+  String payload = packet.substring(header.length());
+  int sep = payload.indexOf('|');
+  String type = payload.substring(0, sep);
+  String data = payload.substring(sep+1);
+  Serial.println("[GS RX] TYPE: " + type);
+  Serial.println("[GS RX] DATA: " + data);
   Serial.print("  (RSSI: ");
   Serial.print(LoRa.packetRssi());
   Serial.println(" dBm)");
