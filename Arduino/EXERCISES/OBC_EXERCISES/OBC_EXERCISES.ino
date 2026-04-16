@@ -338,7 +338,7 @@ void sendAll() {
 
   // Fetch ADCS temp
   while (adcs.available()) adcs.read();
-  adcs.println("TEMP");
+  adcs.println("TEMPADCS");
   unsigned long s1 = millis(); String adcsTemp = "N/A";
   while (millis() - s1 < 2000) {
     if (adcs.available()) { adcsTemp = adcs.readStringUntil('\n'); adcsTemp.trim(); break; }
