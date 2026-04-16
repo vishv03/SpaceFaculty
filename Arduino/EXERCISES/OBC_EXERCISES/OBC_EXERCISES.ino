@@ -364,6 +364,7 @@ void triggerCAM() {
   // TODO: trigger camera payload, capture image, send via LoRa
   sendAck("CAM: not yet implemented");
 }
+
 void sendAll() {
   String t;
   getTimeString(t);
@@ -372,15 +373,20 @@ void sendAll() {
   String imuData  = "N/A";
 
   // ─────────────────────────────
-  // TEMPADCS
+  // FORCE ADCS LISTEN MODE
   // ─────────────────────────────
   adcs.listen();
+  delay(50);
+
+  // ─────────────────────────────
+  // TEMPADCS
+  // ─────────────────────────────
+  while (adcs.available()) adcs.read();   // clear ONLY before command
+
   adcs.println("TEMPADCS");
 
-  adcs.setTimeout(2000);
   unsigned long start1 = millis();
-
-  while (millis() - start1 < 2000) {
+  while (millis() - start1 < 2500) {
     if (adcs.available()) {
       adcsTemp = adcs.readStringUntil('\n');
       adcsTemp.trim();
@@ -388,17 +394,17 @@ void sendAll() {
     }
   }
 
-  delay(200); // give ADCS breathing room
+  delay(150);
 
   // ─────────────────────────────
   // IMU
   // ─────────────────────────────
+  while (adcs.available()) adcs.read();   // IMPORTANT clear old buffer
+
   adcs.println("IMU");
 
-  adcs.setTimeout(2000);
   unsigned long start2 = millis();
-
-  while (millis() - start2 < 2000) {
+  while (millis() - start2 < 2500) {
     if (adcs.available()) {
       imuData = adcs.readStringUntil('\n');
       imuData.trim();
