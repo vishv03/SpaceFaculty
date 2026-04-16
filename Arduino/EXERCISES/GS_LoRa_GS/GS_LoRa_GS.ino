@@ -15,6 +15,7 @@
 // RTIMEOBC      - Reset the OBC mission timer
 // STATUS        - Request system status
 
+#define SECRET_KEY "ANGRYPHONES"
 String command = "";
 
 void setup() {
@@ -55,15 +56,18 @@ void loop() {
 // SEND COMMAND TO OBC
 // ─────────────────────────────────────────────
 void sendCommand(String cmd) {
-  Serial.print("[GS] Sending command: ");
-  Serial.println(cmd);
+  String packet = String(SECRET_KEY) + "|" + cmd;
+
+
 
   // Temporarily stop receiving while transmitting
   LoRa.idle();
-
+  
   LoRa.beginPacket();
-  LoRa.print(cmd);
+  LoRa.print(packet);
   LoRa.endPacket();
+  Serial.print("[GS] Sending command: ");
+  Serial.println(packet);
 
   // Return to receive mode to listen for OBC response
   LoRa.receive();
@@ -75,10 +79,22 @@ void sendCommand(String cmd) {
 void onReceive(int packetSize) {
   if (packetSize == 0) return;
 
-  String incoming = "";
+  String packet = "";
   while (LoRa.available()) {
-    incoming += (char)LoRa.read();
+    packet += (char)LoRa.read();
   }
+  packet.trim();
+
+  Serial.print("[RAW RX] ");
+  Serial.println(packet);
+
+  String prefix = String(SECRET_KEY) + "|";
+  if(!packet.startsWith(prefix)) {
+    Serial.println("[SECURITY] INVALID IGNORE");
+    return;
+  }
+
+  String incoming = packet.substring(prefix.length());
 
   Serial.print("[OBC] ");
   Serial.print(incoming);

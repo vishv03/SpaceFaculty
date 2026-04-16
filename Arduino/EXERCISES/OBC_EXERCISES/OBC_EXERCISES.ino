@@ -12,6 +12,7 @@
 SoftwareSerial adcs(RX_PIN, TX_PIN,true);   // OBC RX=3 ← ADCS TX(2),  OBC TX=4 → ADCS RX(3)
 
 #define GROUP_NAME "TEAM4"
+#define SECRET_KEY "ANGRYPHONES"
 
 // ── Shared Cached Sensor Readings ────────────
 float g_tempOBC = 0.0;
@@ -97,10 +98,21 @@ void loop() {
 void onReceive(int packetSize) {
   if (packetSize == 0) return;
 
-  String command = "";
+  String packet = "";
   while (LoRa.available()) {
-    command += (char)LoRa.read();
+    packet += (char)LoRa.read();
   }
+  packet.trim();
+
+  Serial.print("[RAW RX]: ");
+  Serial.println(packet);
+
+  if (!packet.startsWith(String(SECRET_KEY) + "|")) {
+    Serial.println("[SECURITY] INVALID KEY - packet ignore");
+    return;
+  }
+
+  String command = packet.substring(strlen(SECRET_KEY) + 1);
   command.trim();
 
   Serial.print("[GS CMD] Received: ");
@@ -172,11 +184,12 @@ void updateSensors() {
 // LORA SEND HELPERS
 // ─────────────────────────────────────────────
 void sendLoRa(String msg) {
+  String packet = String(SECRET_KEY) + "|" + msg;
   LoRa.beginPacket();
-  LoRa.print(msg);
+  LoRa.print(packet);
   LoRa.endPacket();
   Serial.print("[TX] ");
-  Serial.println(msg);
+  Serial.println(packet);
 }
 
 void sendAck(String msg) {
