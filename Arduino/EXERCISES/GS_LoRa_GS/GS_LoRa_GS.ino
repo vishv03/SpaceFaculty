@@ -23,13 +23,16 @@ void setup() {
 
   Serial.println("=== Ground Station LoRa Terminal ===");
   Serial.println("Type a command and press Enter to send.");
-  Serial.println("Commands: TEMPOBC, TEMPEPS, TEMPCOMPARISON, VBAT, ALL, TIME, RTIMEOBC, STATUS");
+  Serial.println("Commands: TEMPOBC, TEMPEPS, TEMPCOMPARISON, CAM, VBAT, ALL, TIME, RTIMEOBC, STATUS");
   Serial.println("=====================================");
 
   if (!LoRa.begin(432E6)) {
     Serial.println("Starting LoRa failed!");
     while (1);
   }
+
+  LoRa.setSyncWord(0x67); 
+  Serial.println("LoRa Initialized with Sync Word 0xBA");
 
   // Register receive callback for incoming OBC responses
   LoRa.onReceive(onReceive);
@@ -75,14 +78,29 @@ void sendCommand(String cmd) {
 void onReceive(int packetSize) {
   if (packetSize == 0) return;
 
+  bool isMessage = false;
+  byte firstByte = LoRa.peek();
+  if (firstByte == '[') isMessage = true;
+
+  if(isMessage) {
   String incoming = "";
   while (LoRa.available()) {
     incoming += (char)LoRa.read();
   }
-
   Serial.print("[OBC] ");
   Serial.print(incoming);
   Serial.print("  (RSSI: ");
   Serial.print(LoRa.packetRssi());
   Serial.println(" dBm)");
+  if (incoming.indexOf("START_IMG") > 0) {
+      Serial.println("--- IMAGE DATA STARTING BELOW ---");
+    }
+  } else {
+    while (LoRa.available()) {
+      byte b = LoRa.read();
+      if (b < 0x10) Serial.print("0");
+      Serial.print(b, HEX);
+    }
+  }
+  
 }

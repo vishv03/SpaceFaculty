@@ -1,6 +1,7 @@
 #include <SPI.h>
 #include <LoRa.h>
 #include <SoftwareSerial.h>
+#include <Adafruit_VC0706.h>
 
 // ── Pin Definitions ──────────────────────────
 #define LM35_OBC  A1
@@ -11,6 +12,9 @@
 #define ADCS_EN_PIN 8 
 
 SoftwareSerial adcs(RX_PIN, TX_PIN,true);   // OBC RX=3 ← ADCS TX(2),  OBC TX=4 → ADCS RX(3)
+SoftwareSerial cameraConnection(5, 6);
+
+Adafruit_VC0706 cam = Adafruit_VC0706(&cameraConnection);
 
 #define GROUP_NAME "TEAM4"
 
@@ -69,11 +73,23 @@ digitalWrite(ADCS_EN_PIN, LOW);  // off by default
     while (1);
   }
 
+  LoRa.setSyncWord(0x67); 
+
   LoRa.onReceive(onReceive);
   LoRa.receive();
 
   startTime = millis();
+    if (cam.begin()) {
+    Serial.println("Camera Found:");
+  } else {
+    Serial.println("No camera found?");
+    return;
+  }
+
+  cam.setImageSize(VC0706_320x240);
+
   Serial.println("OBC Ready. Type a command (e.g. TEMPADCS) into Serial Monitor, or wait for LoRa commands.");
+  adcs.listen();
 }
 
 // ─────────────────────────────────────────────
@@ -250,6 +266,7 @@ void sendMaxTemp() {
 // RETRIEVE ADCS TEMPERATURE  ← core new function
 // ─────────────────────────────────────────────
 void retrieveTempADCS() {
+  adcs.listen();
   Serial.println("[ADCS] Sending TEMP request to ADCS...");
 
   // Send the command that the ADCS sketch recognises
@@ -289,6 +306,7 @@ void sendVBAT() {
 // RETRIEVE SUN + MOTOR STATUS FROM ADCS
 // ─────────────────────────────────────────────
 void retrieveSunADCS() {
+  adcs.listen();
   while (adcs.available()) adcs.read();
   adcs.println("SUN");
 
@@ -296,46 +314,62 @@ void retrieveSunADCS() {
   String response = "";
   while (millis() - start < 8000) {
     if (adcs.available()) {
-      response = adcs.readStringUntil('\n');
-      response.trim();
-      if (response.length() > 0) break;
+      char c = adcs.read();
+      if (c == '\n' || c == '\r') { // Check for any newline type
+        if (response.length() > 0) break; // End of message
+      } else {
+        response += c;
+      }
     }
   }
-  if (response.length() > 0)
+ response.trim();
+  if (response.length() > 0) {
     sendLoRa("[" + String(GROUP_NAME) + "] SUN: " + response);
-  else
+  } else {
     sendLoRa("[" + String(GROUP_NAME) + "] ERROR: No response from ADCS");
+  }
 }
 
 void retrieveAdjADCS() {
+  adcs.listen();
   while (adcs.available()) adcs.read();
   adcs.println("ADJ");
   unsigned long start = millis();
   String response = "";
   while (millis() - start < 5000) {
     if (adcs.available()) {
-      response = adcs.readStringUntil('\n');
-      response.trim();
-      if (response.length() > 0) break;
+      char c = adcs.read();
+      if (c == '\n' || c == '\r') { // Check for any newline type
+        if (response.length() > 0) break; // End of message
+      } else {
+        response += c;
+      }
     }
   }
+   response.trim();
   if (response.length() > 0)
     sendLoRa("[" + String(GROUP_NAME) + "] ADJ: " + response);
   else
     sendLoRa("[" + String(GROUP_NAME) + "] ERROR: No response from ADCS");
 }
+
 void retrieveIMUADCS() {
+  adcs.listen();
   while (adcs.available()) adcs.read();
   adcs.println("IMU");
   unsigned long start = millis();
   String response = "";
   while (millis() - start < 2000) {
     if (adcs.available()) {
-      response = adcs.readStringUntil('\n');
-      response.trim();
-      if (response.length() > 0) break;
+      char c = adcs.read();
+      if (c == '\n' || c == '\r') { // Check for any newline type
+        if (response.length() > 0) break; // End of message
+      } else {
+        response += c;
+      }
     }
   }
+   response.trim();
   if (response.length() > 0)
     sendLoRa("[" + String(GROUP_NAME) + "] IMU: " + response);
   else
@@ -343,36 +377,80 @@ void retrieveIMUADCS() {
 }
 
 void triggerCAM() {
+  cameraConnection.listen();
   // TODO: trigger camera payload, capture image, send via LoRa
-  sendAck("CAM: not yet implemented");
+    Serial.println("Snapping photo..");
+
+  if (!cam.takePicture()) {
+    sendLoRa("[" + String(GROUP_NAME) + "] Error: Failed to snapshot");
+    return;
+  }
+
+  uint32_t jpglen = cam.frameLength();
+  uint32_t totalSent = 0; // Track how much we actually send
+  
+  sendLoRa("[" + String(GROUP_NAME) + "] START_IMG:" + String(jpglen));
+  delay(200);
+
+    while (jpglen > 0) {
+      // read 32 bytes at a time;
+      uint8_t bytesToRead = min((uint32_t)32, jpglen); // change 32 to 64 for a speedup but may not work with all setups!
+      uint8_t *buffer = cam.readPicture(bytesToRead);
+
+          if (!buffer) {
+      Serial.println("Camera read error!");
+      break;
+    }
+
+
+    LoRa.beginPacket();
+    LoRa.write(buffer, bytesToRead); // Use .write for raw binary data
+    LoRa.endPacket();
+      
+      /*for (int i =0; i < bytesToRead; i++) {
+        if (buffer[i] < 0x10) Serial.print("0"); //lEading zero for hex digits
+        Serial.print(buffer[i], HEX);
+        Serial.print("");
+      }
+      Serial.println();*/
+      jpglen -= bytesToRead;
+      totalSent += bytesToRead;
+      delay(150);
+  }
+
+    cam.resumeVideo(); 
+    sendLoRa("[" + String(GROUP_NAME) + "] END_IMG");
+  Serial.println("Done! Type 'CAM' for another.");
 }
 void sendAll() {
+  adcs.listen(); 
   String t; getTimeString(t);
 
-  // Fetch ADCS temp
-  while (adcs.available()) adcs.read();
-  adcs.println("TEMPADCS");
-  unsigned long s1 = millis(); String adcsTemp = "N/A";
-  while (millis() - s1 < 2000) {
-    if (adcs.available()) { adcsTemp = adcs.readStringUntil('\n'); adcsTemp.trim(); break; }
-  }
+  auto getADCS = [&](String cmd) {
+    while (adcs.available()) adcs.read(); // Clear old data
+    adcs.println(cmd);
+    String result = "";
+    unsigned long start = millis();
+    while (millis() - start < 1000) { // 1 sec limit
+      if (adcs.available()) {
+        char c = adcs.read();
+        if (c == '\n' || c == '\r') { if(result.length() > 0) break; }
+        else result += c;
+      }
+    }
+    return (result.length() > 0) ? result : "N/A";
+  };
 
-  // Fetch IMU
-  while (adcs.available()) adcs.read();
-  adcs.println("IMU");
-  unsigned long s2 = millis(); String imuData = "N/A";
-  while (millis() - s2 < 2000) {
-    if (adcs.available()) { imuData = adcs.readStringUntil('\n'); imuData.trim(); break; }
-  }
+  String adcsTemp = getADCS("TEMPADCS");
+  String imuData = getADCS("IMU");
 
   String msg = "[" + String(GROUP_NAME) + "] [" + t + "] "
-             + "TEMPOBC: " + String(g_tempOBC, 2) + " deg | "
-             + "TEMPEPS: " + String(g_tempEPS, 2) + " deg | "
-             + adcsTemp + " | "
-             + "VBAT: " + String(g_vbat, 2) + " V | "
-             + imuData;
+             + "OBC:" + String(g_tempOBC, 1) + " EPS:" + String(g_tempEPS, 1) 
+             + " | " + adcsTemp + " | VBAT:" + String(g_vbat, 2) + " | " + imuData;
+             
   sendLoRa(msg);
 }
+
 
 void sendStatus() {
   String t; getTimeString(t);
