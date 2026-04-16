@@ -28,6 +28,9 @@ bool obcWarningSent = false;
 bool epsWarningSent = false;
 bool vbatWarningSet = false;
 
+String pendingCommand = "";
+bool commandPending = false;
+
 // ── Forward Declarations ─────────────────────
 void handleCommand(String command);
 void sendTempOBC();
@@ -81,7 +84,17 @@ void loop() {
   checkTemperatureWarning();
   checkVoltageWarning();
 
-  // ── Serial Monitor command input ──────────
+  // ── Process deferred LoRa command ────────────
+  if (commandPending) {
+    commandPending = false;
+    String cmd = pendingCommand;
+    pendingCommand = "";
+    LoRa.idle();
+    handleCommand(cmd);
+    LoRa.receive();
+  }
+
+  // ── Serial Monitor command input ──────────────
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
     cmd.trim();
@@ -89,7 +102,7 @@ void loop() {
       Serial.print("[Serial Monitor CMD] ");
       Serial.println(cmd);
       LoRa.idle();
-      handleCommand(cmd);   // shared dispatcher
+      handleCommand(cmd);
       LoRa.receive();
     }
   }
@@ -110,9 +123,9 @@ void onReceive(int packetSize) {
   Serial.print("[GS CMD] Received: ");
   Serial.println(command);
 
-  LoRa.idle();
-  handleCommand(command);
-  LoRa.receive();
+  // Don't handle here — defer to loop()
+  pendingCommand = command;
+  commandPending = true;
 }
 
 // ─────────────────────────────────────────────
