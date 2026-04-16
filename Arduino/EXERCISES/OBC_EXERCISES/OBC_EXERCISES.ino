@@ -8,6 +8,7 @@
 #define VBAT_PIN  A0
 #define TX_PIN    4
 #define RX_PIN    3
+#define ADCS_EN_PIN 8 
 
 SoftwareSerial adcs(RX_PIN, TX_PIN,true);   // OBC RX=3 ← ADCS TX(2),  OBC TX=4 → ADCS RX(3)
 
@@ -27,6 +28,9 @@ unsigned long startTime = 0;
 bool obcWarningSent = false;
 bool epsWarningSent = false;
 bool vbatWarningSet = false;
+
+String pendingCommand = "";
+bool commandPending = false;
 
 // ── Forward Declarations ─────────────────────
 void handleCommand(String command);
@@ -56,6 +60,9 @@ void setup() {
   adcs.begin(9600);
   while (!Serial);
 
+
+pinMode(ADCS_EN_PIN, OUTPUT);
+digitalWrite(ADCS_EN_PIN, LOW);  // off by default
   Serial.println("=== OBC Booting ===");
 
   if (!LoRa.begin(432E6)) {
@@ -78,7 +85,17 @@ void loop() {
   checkTemperatureWarning();
   checkVoltageWarning();
 
-  // ── Serial Monitor command input ──────────
+  // ── Process deferred LoRa command ────────────
+  if (commandPending) {
+    commandPending = false;
+    String cmd = pendingCommand;
+    pendingCommand = "";
+    LoRa.idle();
+    handleCommand(cmd);
+    LoRa.receive();
+  }
+
+  // ── Serial Monitor command input ──────────────
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
     cmd.trim();
@@ -86,7 +103,7 @@ void loop() {
       Serial.print("[Serial Monitor CMD] ");
       Serial.println(cmd);
       LoRa.idle();
-      handleCommand(cmd);   // shared dispatcher
+      handleCommand(cmd);
       LoRa.receive();
     }
   }
@@ -118,9 +135,9 @@ void onReceive(int packetSize) {
   Serial.print("[GS CMD] Received: ");
   Serial.println(command);
 
-  LoRa.idle();
-  handleCommand(command);
-  LoRa.receive();
+  // Don't handle here — defer to loop()
+  pendingCommand = command;
+  commandPending = true;
 }
 
 // ─────────────────────────────────────────────
@@ -136,6 +153,15 @@ void handleCommand(String command) {
   else if (command == "RTIMEOBC")       { resetTime(); sendAck("TIME RESET OK"); }
   else if (command == "STATUS")         sendStatus();
   else if (command == "TEMPADCS")       retrieveTempADCS();   // ← your target command
+  else if (command == "SUN")    retrieveSunADCS();
+  else if (command == "ENADCS")  { digitalWrite(ADCS_EN_PIN, HIGH); sendAck("ADCS Enabled"); }
+else if (command == "CAM")     triggerCAM();
+else if (command == "IMU")     retrieveIMUADCS();
+else if (command == "ADJ")     retrieveAdjADCS();
+  else if (command == "ENADCS") {
+  digitalWrite(ADCS_EN_PIN, HIGH);
+  sendAck("ADCS Enabled");
+}
   else                                  sendAck("UNKNOWN CMD: " + command);
 }
 
@@ -240,7 +266,7 @@ void retrieveTempADCS() {
   Serial.println("[ADCS] Sending TEMP request to ADCS...");
 
   // Send the command that the ADCS sketch recognises
-  adcs.println("TEMP");
+  adcs.println("TEMPADCS");
 
   unsigned long start = millis();
   String response = "";
@@ -271,20 +297,94 @@ void sendVBAT() {
   sendLoRa("[" + String(GROUP_NAME) + "] VBAT = " + String(g_vbat, 2) + " V");
 }
 
+
+// ─────────────────────────────────────────────
+// RETRIEVE SUN + MOTOR STATUS FROM ADCS
+// ─────────────────────────────────────────────
+void retrieveSunADCS() {
+  while (adcs.available()) adcs.read();
+  adcs.println("SUN");
+
+  unsigned long start = millis();
+  String response = "";
+  while (millis() - start < 8000) {
+    if (adcs.available()) {
+      response = adcs.readStringUntil('\n');
+      response.trim();
+      if (response.length() > 0) break;
+    }
+  }
+  if (response.length() > 0)
+    sendLoRa("[" + String(GROUP_NAME) + "] SUN: " + response);
+  else
+    sendLoRa("[" + String(GROUP_NAME) + "] ERROR: No response from ADCS");
+}
+
+void retrieveAdjADCS() {
+  while (adcs.available()) adcs.read();
+  adcs.println("ADJ");
+  unsigned long start = millis();
+  String response = "";
+  while (millis() - start < 5000) {
+    if (adcs.available()) {
+      response = adcs.readStringUntil('\n');
+      response.trim();
+      if (response.length() > 0) break;
+    }
+  }
+  if (response.length() > 0)
+    sendLoRa("[" + String(GROUP_NAME) + "] ADJ: " + response);
+  else
+    sendLoRa("[" + String(GROUP_NAME) + "] ERROR: No response from ADCS");
+}
+void retrieveIMUADCS() {
+  while (adcs.available()) adcs.read();
+  adcs.println("IMU");
+  unsigned long start = millis();
+  String response = "";
+  while (millis() - start < 2000) {
+    if (adcs.available()) {
+      response = adcs.readStringUntil('\n');
+      response.trim();
+      if (response.length() > 0) break;
+    }
+  }
+  if (response.length() > 0)
+    sendLoRa("[" + String(GROUP_NAME) + "] IMU: " + response);
+  else
+    sendLoRa("[" + String(GROUP_NAME) + "] ERROR: No IMU response");
+}
+
+void triggerCAM() {
+  // TODO: trigger camera payload, capture image, send via LoRa
+  sendAck("CAM: not yet implemented");
+}
 void sendAll() {
   String t; getTimeString(t);
-  String msg1 = "[" + String(GROUP_NAME) + "] TEMPOBC = " + String(g_tempOBC, 2) +
-                " deg | TEMPEPS = " + String(g_tempEPS, 2) +
-                " deg | VBAT = "    + String(g_vbat, 2) +
-                " V | TIME = "      + t;
-  String msg2 = "[" + String(GROUP_NAME) + "] STATUS = ";
-  if      (g_tempOBC > 30)  msg2 += "WARNING! TEMPOBC too high: " + String(g_tempOBC, 0) + " deg";
-  else if (g_tempEPS > 30)  msg2 += "WARNING! TEMPEPS too high: " + String(g_tempEPS, 0) + " deg";
-  else if (g_vbat < 3.6)    msg2 += "WARNING! VBAT too low: "     + String(g_vbat, 2)    + " V";
-  else                       msg2 += "NOMINAL";
-  sendLoRa(msg1);
-  delay(100);
-  sendLoRa(msg2);
+
+  // Fetch ADCS temp
+  while (adcs.available()) adcs.read();
+  adcs.println("TEMPADCS");
+  unsigned long s1 = millis(); String adcsTemp = "N/A";
+  while (millis() - s1 < 2000) {
+    if (adcs.available()) { adcsTemp = adcs.readStringUntil('\n'); adcsTemp.trim(); break; }
+  }
+
+  // Fetch IMU
+  while (adcs.available()) adcs.read();
+  adcs.println("IMU");
+  unsigned long s2 = millis(); String imuData = "N/A";
+  while (millis() - s2 < 2000) {
+    if (adcs.available()) { imuData = adcs.readStringUntil('\n'); imuData.trim(); break; }
+  }
+
+  String msg = "[" + String(GROUP_NAME) + "] [" + t + "] "
+             + "TEMPOBC: " + String(g_tempOBC, 2) + " deg | "
+             + "TEMPEPS: " + String(g_tempEPS, 2) + " deg | "
+             + adcsTemp + " | "
+             + "VBAT: " + String(g_vbat, 2) + " V | "
+             + imuData;
+  sendLoRa(msg);
 }
 
 void sendStatus() {
