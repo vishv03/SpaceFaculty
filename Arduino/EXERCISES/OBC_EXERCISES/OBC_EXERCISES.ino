@@ -365,30 +365,57 @@ void triggerCAM() {
   sendAck("CAM: not yet implemented");
 }
 void sendAll() {
-  String t; getTimeString(t);
+  String t;
+  getTimeString(t);
 
-  // Fetch ADCS temp
-  while (adcs.available()) adcs.read();
+  String adcsTemp = "N/A";
+  String imuData  = "N/A";
+
+  // ─────────────────────────────
+  // TEMPADCS
+  // ─────────────────────────────
+  adcs.listen();
   adcs.println("TEMPADCS");
-  unsigned long s1 = millis(); String adcsTemp = "N/A";
-  while (millis() - s1 < 2000) {
-    if (adcs.available()) { adcsTemp = adcs.readStringUntil('\n'); adcsTemp.trim(); break; }
+
+  adcs.setTimeout(2000);
+  unsigned long start1 = millis();
+
+  while (millis() - start1 < 2000) {
+    if (adcs.available()) {
+      adcsTemp = adcs.readStringUntil('\n');
+      adcsTemp.trim();
+      break;
+    }
   }
 
-  // Fetch IMU
-  while (adcs.available()) adcs.read();
+  delay(200); // give ADCS breathing room
+
+  // ─────────────────────────────
+  // IMU
+  // ─────────────────────────────
   adcs.println("IMU");
-  unsigned long s2 = millis(); String imuData = "N/A";
-  while (millis() - s2 < 2000) {
-    if (adcs.available()) { imuData = adcs.readStringUntil('\n'); imuData.trim(); break; }
+
+  adcs.setTimeout(2000);
+  unsigned long start2 = millis();
+
+  while (millis() - start2 < 2000) {
+    if (adcs.available()) {
+      imuData = adcs.readStringUntil('\n');
+      imuData.trim();
+      break;
+    }
   }
 
+  // ─────────────────────────────
+  // BUILD PACKET
+  // ─────────────────────────────
   String msg = "[" + String(GROUP_NAME) + "] [" + t + "] "
              + "TEMPOBC: " + String(g_tempOBC, 2) + " deg | "
              + "TEMPEPS: " + String(g_tempEPS, 2) + " deg | "
              + adcsTemp + " | "
              + "VBAT: " + String(g_vbat, 2) + " V | "
              + imuData;
+
   sendLoRa(msg);
 }
 
